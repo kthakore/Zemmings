@@ -1,5 +1,5 @@
 package Zemmings::Actor::Zemming;
-use parent 'Avenger::Actor';
+use Avenger::Actor;
 
 setup {
     my $self = shift;
@@ -40,4 +40,6 @@ draw {
     'left'  => { [ [ 0, 0, 10, 10 ], [ 0,   0,   255, 255 ] ] }
 };
 
+
 1;
+
