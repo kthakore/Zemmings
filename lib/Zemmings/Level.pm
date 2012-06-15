@@ -35,7 +35,7 @@ event 'key_down' => sub {
 
 show {
     app->draw_rect( $sky_rect, 0x3BB9FFFF );
-    app->draw_rect( $floor->rect, [0, 200, 0, 255] );
+    app->draw_rect( $floor->rect, [0, 255, 0, 255] );
 
     # have the animation track the protagonist
     $animation->x($protagonist->x);
