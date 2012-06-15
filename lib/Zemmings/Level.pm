@@ -16,8 +16,8 @@ actor 'Zemming' => {
 #actors => 'level1.json'
 #Looks for actors arrayref[hash] in data/level1.json
 
-error: src refspec levels does not match any.
-error: failed to push some refs to 'git@github.com:kthakore/Zemmings.git'
+setup {
+    
     level  => 1,
     points => 500,
 
