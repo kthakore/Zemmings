@@ -9,7 +9,7 @@ sub new {
     bless \%opts, $package;
 }
 
-sub start {
+sub create_map {
     my $self = shift;
     my %opts = @_;
 
