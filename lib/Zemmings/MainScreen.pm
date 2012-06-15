@@ -5,10 +5,14 @@ use Avenger::Widget::Menu;
 sub startup {
     my $self = shift;
 
-    menu {
-        'New Game' => sub { load('Level', 1) },
-        'Quit'     => sub { exit },
-    };
+    menu(
+        sub {
+            'New Game' => sub { load('Level', 1) },
+            'Quit'     => sub { exit },
+        }, {
+            font => 'share/DroidSansMonoDotted.ttf'
+        },
+    );
 }
 
 show { app->update };
