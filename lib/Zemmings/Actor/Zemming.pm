@@ -1,11 +1,11 @@
 package Zemmings::Actor::Zemming;
 use Avenger::Actor;
 
-setup {
+sub setup {
     my $self = shift;
-    $self->body->velocity = 5;
-    $self->body->y = 600;
-    $self->body->x = 100;
+
+#    $self->{body} is the body
+
 };
 
 event 'tick' => sub {

@@ -8,9 +8,31 @@ sub actor {
 
   foreach my $actor_key ( keys %args ) {
       my $actor_class = "$base::$actor_key";
-      my $actor; #TODO: Make DSL calling DSL work = $actor_class
+      my $actor = new( $actor_class,  $args{$actor_key} ); 
+      #TODO: Make DSL calling DSL work = $actor_class
   }
  
+}
+
+
+sub new {
+    my $class = shift; 
+    my %args = @_;
+    my $body_hash = delete $args{body};
+    my $body = world->create_body( $body_hash );
+
+    if(my $v =  delete %{$body_hash}{velocity} )
+    {
+        $body->velocity( @$v )
+    }
+    #HOLY COMMUNION 
+    my $flesh = bless { body => $body }, $class;
+    
+
+    $flesh->setup( @_ );
+
+    return $flesh;
+
 }
 
 sub import {
@@ -23,8 +45,8 @@ sub import {
     #  *{"${caller}::setup"}   = sub {$self};
 }
 
-sub setup {
-
+sub body {
+    return $_[0]->{body}
 }
 
 sub draw {

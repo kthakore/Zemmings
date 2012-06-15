@@ -10,7 +10,7 @@ actor 'Zemming' => {
     body => {
         x        => 10,
         y        => 600,
-        velocity => { x => 5, y => 0 }
+        velocity => [ 5, 0 ]
     }
 };
 
