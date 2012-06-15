@@ -4,6 +4,8 @@ use Avenger;
 #Is the zemming level screen
 
 #Single Zemming Actor
+#NOTE: Always has to have actor in BASE::Actor namespace
+
 actor 'Zemming' => {
     body => {
         x        => 10,
@@ -16,8 +18,10 @@ actor 'Zemming' => {
 #actors => 'level1.json'
 #Looks for actors arrayref[hash] in data/level1.json
 
+
 setup {
-    
+
+    # SINGLETONS FOR THE LEVEL     
     level  => 1,
     points => 500,
 
