@@ -19,8 +19,11 @@ sub new {
     my $class = shift; 
     my %args = @_;
     my $body_hash = delete $args{body};
+
+       $body_hash = $class::pre_setup( $body_hash );
     my $body = world->create_body( $body_hash );
 
+   
     if(my $v =  delete %{$body_hash}{velocity} )
     {
         $body->velocity( @$v )
