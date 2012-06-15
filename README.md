@@ -35,3 +35,9 @@ Zemmings want your brains or flesh or stuff
     22:05 <@kthakore_> died*
     22:05 <@kthakore_> to win
 
+installed:
+* Box2D
+* Class::Unload
+* SDLx::Widget
+* Avenger from github - https://github.com/PerlGameDev/Avenger
+
