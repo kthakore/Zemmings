@@ -2,6 +2,8 @@ package Zemmings::Level;
 use Avenger;
 use SDLx::Sprite::Animated;
 
+world->gravity( 0, -100 );
+
 update { world->update };
 
 my $sky_rect = rect( 0, 0, app->w, app->h);
