@@ -10,14 +10,14 @@ sub set { $_[0]->{map}->[$_[1]]->[$_[2]] = $_[3] }
 sub new {
     my $package = shift;
     my %opts = @_;
-    my $data = delete $opts{file};
+    my $file = delete $opts{file};
 
     my $map;  # ->[$x]->[$y]
     my $map_max_x = 0;
     my $map_max_y = 0; 
 	   
     die unless @levels;
-    open my $fh, '<', $fn or die "$fn: $!";
+    open my $fh, '<', $file or die "$file: $!";
     my $y = 0;
     while( my $line = readline $fh ) {
         chomp $line;

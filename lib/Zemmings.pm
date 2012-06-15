@@ -12,8 +12,10 @@ sub new {
 sub start {
     my $self = shift;
     my %opts = @_;
-    my $level = delete $opts{level};
-    my $map = Zemmings::Map->new( file => $level );
+
+    my @levels = glob "*.lvl";
+
+    my $map = Zemmings::Map->new( file => $levels[ int rand @levels ] );
 }
 
 start 'MainScreen';
