@@ -18,6 +18,7 @@ my $protagonist = world->create_body(
         h    => 32,
         friction => 0.0, # optional
         density  => 0.7, # optional
+        collided => sub { warn 'Collided' } 
 );
 
 my $animation = SDLx::Sprite::Animated->new(image => 'share/stickzombie.png', width => 32, height => 32);
