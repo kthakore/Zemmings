@@ -4,10 +4,6 @@ use SDLx::Sprite::Animated;
 
 world->gravity( 0, -100 );
 
-my $listener = Box2D::PerlContactListener->new();
-$listener->SetPostSolveSub( sub { warn "collision" } );
-world->{world}->SetContactListener( $listener );
-
 update { world->update };
 
 my $sky_rect = rect( 0, 0, app->w, app->h);
