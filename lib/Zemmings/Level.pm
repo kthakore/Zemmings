@@ -22,6 +22,17 @@ my $protagonist = world->create_body(
 
 my $animation = SDLx::Sprite::Animated->new(image => 'share/stickzombie.png', width => 32, height => 32);
 $animation->start;
+
+event 'key_down' => sub {
+    my ($x, $y);
+    given (my $key = shift) {
+        when ('up')    { $y = 200  };
+        when ('left')  { $x = -200 };
+        when ('right') { $x = 200  };
+    };
+    $protagonist->velocity( $x, $y );
+};
+
 show {
     app->draw_rect( $sky_rect, 0x3BB9FFFF );
     app->draw_rect( $floor->rect, [0, 200, 0, 255] );
