@@ -2,6 +2,7 @@ package Zemmings::Actor::Zemming;
 use Avenger::Actor;
 
 sub pre_setup {
+    my $class = shift;
     my $args = shift;
     $args->{type} = 'dynamic';
     return $args;

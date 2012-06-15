@@ -18,13 +18,13 @@ sub actor {
 sub new {
     my $class = shift; 
     my %args = @_;
-    my $body_hash = delete $args{body};
+    my $body_hr = delete $args{body};
 
-       $body_hash = $class::pre_setup( $body_hash );
-    my $body = world->create_body( $body_hash );
+       $body_hr = ${class}->pre_setup( $body_hr );
+    my $body = world->create_body( $body_hr );
 
    
-    if(my $v =  delete %{$body_hash}{velocity} )
+    if(my $v = $body_hr->{velocity} )
     {
         $body->velocity( @$v )
     }
@@ -56,9 +56,6 @@ sub draw {
 
 }
 
-sub start {
 
-    return 1;
-}
 
 1;
