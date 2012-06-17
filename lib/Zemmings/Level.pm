@@ -58,6 +58,7 @@ show {
 
         my $shape = $ob->shape;
         my $color = $ob->color;
+# die sprintf "%x\n", $color;
         my $body  = $ob->body;
 
         my @verts = map { $body->GetWorldPoint( $shape->GetVertex($_) ) } ( 0 .. $shape->GetVertexCount() - 1 );
@@ -67,27 +68,34 @@ show {
         
         #  warn "vertxx xes: " . Data::Dumper::Dumper \@vx;
         # warn "vertex yes: " . Data::Dumper::Dumper \@vy;
-        SDL::GFX::Primitives::filled_polygon_color( app, \@vx, \@vy, scalar @verts, $color || 0x000000ff ); # XXXXX
+        SDL::GFX::Primitives::filled_polygon_color( app, \@vx, \@vy, scalar @verts, $color || 0x000000ff );
 
         # fun bit of debugging
-        #    my $color = 0xffffffff;
+        # this is useful for seeing what verices the SVG parser came up with; the line starts bright (red)
+        # and gets darker with each segment drawn
+        #$debug and do {
+        #    my $color = 0xff8f8fff;
         #    my $last_vert;
         #    for my $vert ( map { $body->GetWorldPoint( $shape->GetVertex($_) ) } ( 0 .. $shape->GetVertexCount() - 1 ) ) {
         #        SDL::GFX::Primitives::line_color( app, $last_vert->x, $last_vert->y, $vert->x, $vert->y, $color ) if $last_vert;
         #        $color -= 0x10101000;
         #        $last_vert = $vert;
         #    }
+        #};
 
         # fun bit of debugging
-        my $stupid_raw_shape_data     = $ob->{raw_shape_data} or die;
-        my $line_color = 0xffffffff;
-        my $last_vert;
-        warn Data::Dumper::Dumper $stupid_raw_shape_data;
-        for my $vert ( @$stupid_raw_shape_data ) {
-            SDL::GFX::Primitives::line_color( app, $last_vert->[0], $last_vert->[1], $vert->[0], $vert->[1], $line_color ) if $last_vert;
-            $line_color -= 0x10101000;
-            $last_vert = $vert;
-        }
+        do {
+            my $raw_shape_data     = $ob->{raw_shape_data} or die;
+            my $raw_starting_position = $ob->{raw_starting_position} or die;
+            my $line_color = 0xffffffff;
+            my $last_vert;
+            warn Data::Dumper::Dumper $raw_shape_data;
+            for my $vert ( @$raw_shape_data ) {
+                SDL::GFX::Primitives::line_color( app, $last_vert->[0] + $raw_starting_position->[0], $last_vert->[1] + $raw_starting_position->[1], $vert->[0] + $raw_starting_position->[0], $vert->[1] + $raw_starting_position->[1], $line_color ) if $last_vert;
+                $line_color -= 0x10101000;
+                $last_vert = $vert;
+            }
+        };
 
     }
 

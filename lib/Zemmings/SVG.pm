@@ -1,12 +1,15 @@
 package Zemmings::SVG;
 
+use strict;
+use warnings;
+
 =head1 NAME
 
 Zemmings::SVG
 
 =head1 DESCRIPTION
 
-Parse vector data out of SVG files and construct Box2D polygons with them.  
+Parse vector data out of SVG files and construct L<Box2D> polygons with them.  
 
 =cut
 
@@ -18,7 +21,7 @@ use Box2D;
 
 Construct a new L<Zemmings::SVG> objects from an SVG file.
 
-XXX todo -- circles?  other shapes?  colors?
+XXX todo -- circles?  other shapes?
 
 =head3 C<world>
 
@@ -31,6 +34,9 @@ If provided, SVG polygon data will be scaled to fit within a box of this size.
 This may be useful for fitting a page of Inkscape data onto a screen.
 If so, these may be taken from C<<app->w>> and C<<app->h>>.
 
+On (detected) failure, it C<die>s, XXX currently without explanation; you have to look at the code and
+see what it is trying to do at the point that it fails.
+
 ALPHA 
 
 =head1 TODO
@@ -38,6 +44,8 @@ ALPHA
 * Doesn't yet figure out whether it needs to reverse order of the points so it doesn't wind the polygon in the wrong direction.
 
 * Need local coordinate system for each polygon; right now they share one.  Need to clip, translate, and position each shape.
+
+* Rather than passing a max_x and max_y, should preserve aspect ratio with a max_size option that scales input to fit input_max_x * input_max_y < max_size ** 2.  eg, an 800x600 scale input would be scaled down to 640x480 if max_size where specified as 307200.
 
 =cut
 
@@ -87,6 +95,7 @@ sub new {
 
     #
     # find the bounds of the world
+    # replace parse the SVG paths and build a list of polygons
     #
 
     # if below 0, we have to translate to above 0
@@ -97,18 +106,16 @@ sub new {
     my $world_min_y = 0;
     my $world_max_y = 0;
 
+    my @polygons;
+
     for my $path ( @paths ) {
         my @polygon = $self->svg_path_data( $path->{d} );
-        my @xs = map { $_->[0] } sort { $a->[0] <=> $b->[0] } @polygon;
-        my @ys = map { $_->[1] } sort { $a->[1] <=> $b->[1] } @polygon;
-        my $min_x = $xs[0];
-        my $max_x = $xs[-1];
-        my $min_y = $ys[0];
-        my $max_y = $ys[-1];
+        my ($min_x, $min_y, $max_x, $max_y) = $self->get_min_max_x_y( \@polygon );
         $world_min_x = $min_x if $min_x < $world_min_x;
         $world_min_y = $min_y if $min_y < $world_min_y;
         $world_max_x = $max_x if $max_x > $world_max_x;
         $world_max_y = $max_y if $max_y > $world_max_y;
+        push @polygons, \@polygon;
     }
 
     my $world_scale_x;
@@ -129,12 +136,12 @@ sub new {
     # scale to screen size and construct the Box2D::b2PolygonShape objects
     #
 
-    for my $path ( @paths ) {
+    for my $polygon_i ( 0 .. @polygons-1 ) {
 
-die Data::Dumper::Dumper $path unless $path->{d};
-        my @polygon = $self->svg_path_data( $path->{d} ) or die;
+        my $path = $paths[ $polygon_i ];   # parallel arrays; this is a hashref of the attributes of the XML/SVG <path...> tag
+        my @polygon = @{ $polygons[$polygon_i] }; # parallel arrays; this is the point data parsed out of the d attribute of the XML/SVG <path...> tag
 
-        # translate the entire input together to the screen size
+        # translate the polygon into the screen area (or, in general, translate to appear in the specified area)
 
         if( $world_min_x < 0 ) {
             $_->[0] += abs($world_min_x) for @polygon;
@@ -145,14 +152,26 @@ die Data::Dumper::Dumper $path unless $path->{d};
         if( $world_min_y < 0 ) {
             $_->[1] += abs($world_min_y) for @polygon;
         } else {
-            $_->[0] -= abs($world_min_y) for @polygon;
+            $_->[1] -= abs($world_min_y) for @polygon;
         }
 
-        # scale the entire input together to the screen size
+        # scale the polygon to the screen size (or the specified size)
 
         $_->[0] *= $world_scale_x for @polygon;
         $_->[1] *= $world_scale_y for @polygon;
 
+        # then find the local min and max and use that as the objects initial position
+
+        my ( $local_min_x, $local_min_y, $local_max_x, $local_max_y ) = $self->get_min_max_x_y( \@polygon );
+
+        # translate the polygon into its own coordinate system that starts at 0,0 for that shape
+        # this space that we substract out from the top left of the screen and the start of this polygon
+        # gets used in a moment as the x, y position of this polygon on the screen.
+        # this way, the shape is actually near its x, y position.
+
+        $_->[0] -= $local_min_x for @polygon;
+        $_->[1] -= $local_min_y for @polygon;
+        
         # splice @polygon, @polygon/2, 1, () while @polygon > 8; # XXXXXXXXX how to get more vertices?  is 8 a limitation?
         # @polygon = reverse @polygon; # XXXXXXXXXXXX okay, how do we figure out if we need to reverse this to reverse the winding?  XXXXX makes it coredump with " Assertion `edge.LengthSquared()" if the points go the wrong way with respect to clockwise/counter clockwise
 
@@ -171,11 +190,13 @@ warn Data::Dumper::Dumper \@polygon;
         my $bodyDef = Box2D::b2BodyDef->new();
         $bodyDef->type(Box2D::b2_staticBody);
         $bodyDef->position->Set( 0, 0  ); # XXXXXXXXXXX  need a local coordinate system for each shape
+        $bodyDef->position->Set( $local_min_x, $local_min_y  );
         my $body = $world->CreateBody($bodyDef);
 
         # color
 
         my $color = $self->color_data( $path->{style} );
+warn "XXXXXXXXXXXXXXXXXXXXXXXXXXX parsed out color data $color from style $path->{stype}";
 
         # Zemmings::SVD::Object
 
@@ -185,6 +206,7 @@ warn Data::Dumper::Dumper \@polygon;
             color => $color,
             # ... extra stuff
             raw_shape_data => \@polygon,
+            raw_starting_position => [ $local_min_x, $local_min_y ],
         }, 'Zemmings::SVG::Object';
 
     }
@@ -281,6 +303,10 @@ sub svg_path_data {
 =head2 color_data( $style_attribute_text )
 
 Helper function.  Pulls color data out of the C<style> attribute of the C<path> tag.
+Defaults to C<0x000000ff>, black.
+XXX should maybe return C<undef> when no color data is extractable and let people set
+their own defaults?  Or let people pass a default including C<undef>?
+Problem with defaults is that you need a way to tell when they've been used.
 
 =cut
 
@@ -288,9 +314,37 @@ sub color_data {
     my $self = shift;
     my $style = shift;
     #    style="fill:#000080;stroke:#000000;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-    $style =~ m/fill:#[0-9a-zA-Z]{6}/ or return 0x000000ff;
+    $style =~ m/fill:#([0-9a-zA-Z]{6})/ or return 0x000000ff;
     my $color = ( $1 << 8 ) | 0xff;  # no transparency
     return $color;
+}
+
+=head2 get_min_max_x_y( $point_data )
+
+Finds the minimum and maximum X and Y coordinates and returns them.
+
+=head3 $point_data
+
+Point data for one polygon.  Arrayref of arrayrefs of X and Y points.
+
+=head3 Return value
+
+  ( $min_x, $min_y, $max_x, $max_y )
+
+Internal helper method.
+
+=cut
+
+sub get_min_max_x_y {
+        my $self = shift;
+        my @polygon = @{ shift() };
+        my @xs = map { $_->[0] } sort { $a->[0] <=> $b->[0] } @polygon;
+        my @ys = map { $_->[1] } sort { $a->[1] <=> $b->[1] } @polygon;
+        my $min_x = $xs[0];
+        my $max_x = $xs[-1];
+        my $min_y = $ys[0];
+        my $max_y = $ys[-1];
+        return ($min_x, $min_y, $max_x, $max_y);
 }
 
 #
