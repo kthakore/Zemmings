@@ -80,12 +80,12 @@ show {
 
         # fun bit of debugging
         my $stupid_raw_shape_data     = $ob->{raw_shape_data} or die;
-        my $color = 0xffffffff;
+        my $line_color = 0xffffffff;
         my $last_vert;
         warn Data::Dumper::Dumper $stupid_raw_shape_data;
         for my $vert ( @$stupid_raw_shape_data ) {
-            SDL::GFX::Primitives::line_color( app, $last_vert->[0], $last_vert->[1], $vert->[0], $vert->[1], $color ) if $last_vert;
-            $color -= 0x10101000;
+            SDL::GFX::Primitives::line_color( app, $last_vert->[0], $last_vert->[1], $vert->[0], $vert->[1], $line_color ) if $last_vert;
+            $line_color -= 0x10101000;
             $last_vert = $vert;
         }
 
