@@ -17,7 +17,7 @@ use Data::Dumper;
 use XML::Parser;
 use Box2D;
 
-=head2 new( file => $svg_file, world => $box2d_world_object, max_x => $screen_size_x, max_y => $screen_size_y, debug => 0, )
+=head2 new( file => $svg_file, world => $box2d_world_object, max_x => $screen_size_x, max_y => $screen_size_y, debug => 0, scale => 1/2, )
 
 Construct a new L<Zemmings::SVG> objects from an SVG file.
 
@@ -37,6 +37,17 @@ If so, these may be taken from C<<app->w>> and C<<app->h>>.
 On (detected) failure, it C<die>s, XXX currently without explanation; you have to look at the code and
 see what it is trying to do at the point that it fails.
 
+=head3 C<scale>
+
+Scale factor (generally less than 1) between screen coordinates and world coordinates.  Box2D likes to deal in units
+smaller than pixels; 300 is a big number for Box2D, for example, and numbers are floating point values, so units
+small than 1 are fine.
+Must match any other shapes you create yourself or pull in from other places.
+This is applied on top of and after the C<max_x>, C<max_y> scale.
+XXXXX how can I figure out what this is set to already?  $body->GetWorldPoint( $shape->GetVertex($_) ) doesn't give us back what we put in, it doesn't seem
+XXXXX overly complicated and klunky
+XXXX highly experimental
+
 ALPHA 
 
 =head1 TODO
@@ -52,17 +63,19 @@ ALPHA
 sub new {
 
     my $package = shift;
+
     my %opts = @_;
     my $file = delete $opts{file};
     my $debug = delete $opts{debug};
     my $app_w = delete $opts{max_x};
     my $app_h = delete $opts{max_y};
     my $world = delete $opts{world};
-    die if keys %opts;
+    my $scale = delete $opts{scale} or die;
+    die "unknown parameters: " . join ', ', keys %opts if keys %opts;
 
     $world = $world->{world} if ref($world) eq 'Avenger::World'; # no CreateBody() in Avenger::World XXXX should probably have one, then this wouldn't be needed
 
-    my $self = bless { file => $file, }, $package;
+    my $self = bless { file => $file, debug => $debug, objects => [], }, $package;
 
     open my $fh, '<', $file or die $!;
     read $fh, my $buf, -s $fh;
@@ -93,90 +106,139 @@ sub new {
 
     # warn Data::Dumper::Dumper \@paths if $debug;
 
-    #
-    # find the bounds of the world
-    # replace parse the SVG paths and build a list of polygons
-    #
-
-    # if below 0, we have to translate to above 0
-    # if above 0, we translate to 0
-
-    my $world_min_x = 0;
-    my $world_max_x = 0;
-    my $world_min_y = 0;
-    my $world_max_y = 0;
+    # build polygons from SVG data
 
     my @polygons;
+    # my $last_point;
 
     for my $path ( @paths ) {
-        my @polygon = $self->svg_path_data( $path->{d} );
-        my ($min_x, $min_y, $max_x, $max_y) = $self->get_min_max_x_y( \@polygon );
-        $world_min_x = $min_x if $min_x < $world_min_x;
-        $world_min_y = $min_y if $min_y < $world_min_y;
-        $world_max_x = $max_x if $max_x > $world_max_x;
-        $world_max_y = $max_y if $max_y > $world_max_y;
+
+        my @polygon = $self->svg_path_data( $path->{d}, );
+        # my ($min_x, $min_y, $max_x, $max_y) = $self->get_min_max_x_y( \@polygon );
+        # $last_point = [$min_x, $min_y];
+        # $last_point = [ -10, -10 ];
+
+        # SVG path data closes the polygon but Box2D doesn't want it closed, so un-close it if it was properly closed
+        if( $polygon[0]->[0] == $polygon[-1]->[0] and $polygon[0]->[1] == $polygon[-1]->[1] ) {
+            pop @polygon;
+        }
+
         push @polygons, \@polygon;
+
     }
 
-    my $world_scale_x;
-    my $world_scale_y;
+    do {
 
-    $world_scale_x = ( $app_w - 1 ) / ( $world_max_x - $world_min_x );
-    $world_scale_y = ( $app_h - 1 ) / ( $world_max_y - $world_min_y );
+        # scale to screen size
 
-    #
+        my $world_min_x = 0;
+        my $world_max_x = 0;
+        my $world_min_y = 0;
+        my $world_max_y = 0;
+    
+        for my $polygon ( @polygons ) {
+    
+            my ($min_x, $min_y, $max_x, $max_y) = $self->get_min_max_x_y( $polygon );
+            $world_min_x = $min_x if $min_x < $world_min_x;
+            $world_min_y = $min_y if $min_y < $world_min_y;
+            $world_max_x = $max_x if $max_x > $world_max_x;
+            $world_max_y = $max_y if $max_y > $world_max_y;
+    
+        }
+    
+        my $world_scale_x;
+        my $world_scale_y;
+    
+        $world_scale_x = ( $app_w - 1 ) / $world_max_x;
+        $world_scale_y = ( $app_h - 1 ) / $world_max_y;
+    
+        for my $polygon_i ( 0 .. @polygons-1 ) {
+    
+            my @polygon = @{ $polygons[$polygon_i] };
+    
+            # scale the polygon to the screen size (or the specified size)
+    
+            $_->[0] *= $world_scale_x * $scale for @polygon; # XXXXXXXXXXXXX
+            $_->[1] *= $world_scale_y * $scale for @polygon;
+    
+        }
+    };
+    
+    do {
 
-    if( $debug ) {
-        warn "world_min_x $world_min_x world_max_x $world_max_x world_min_y $world_min_y world_max_y $world_max_y world_scale_x $world_scale_x world_scale_y $world_scale_y"; #  app w @{[ app->w ]} app h @{[ app->h ]} XXX
-        warn 'max x - min x: ' . ( $world_max_x - $world_min_x );
-        warn 'max y - min y: ' . ( $world_max_y - $world_min_y );
-    }
+        # translate polygon data to the upper left of the screen
 
-    #
-    # scale to screen size and construct the Box2D::b2PolygonShape objects
-    #
+        my $world_min_x = 0;
+        my $world_max_x = 0;
+        my $world_min_y = 0;
+        my $world_max_y = 0;
+    
+        for my $polygon ( @polygons ) {
+            my ($min_x, $min_y, $max_x, $max_y) = $self->get_min_max_x_y( $polygon );
+            $world_min_x = $min_x if $min_x < $world_min_x;
+            $world_min_y = $min_y if $min_y < $world_min_y;
+            $world_max_x = $max_x if $max_x > $world_max_x;
+            $world_max_y = $max_y if $max_y > $world_max_y;
+        }
+    
+        for my $polygon_i ( 0 .. @polygons-1 ) {
+    
+            my @polygon = @{ $polygons[$polygon_i] };
+
+            # translate the polygon into the screen area (or, in general, translate to appear in the specified area)
+    
+            if( $world_min_x < 0 ) {
+                $_->[0] += abs($world_min_x) for @polygon;
+            } else {
+                # $_->[0] -= abs($world_min_x) for @polygon;
+            }
+    
+            if( $world_min_y < 0 ) {
+                $_->[1] += abs($world_min_y) for @polygon;
+            } else {
+                # $_->[1] -= abs($world_min_y) for @polygon;
+            }
+    
+        }
+    };
+
+    # construct the Box2D::b2PolygonShape objects
 
     for my $polygon_i ( 0 .. @polygons-1 ) {
 
         my $path = $paths[ $polygon_i ];   # parallel arrays; this is a hashref of the attributes of the XML/SVG <path...> tag
         my @polygon = @{ $polygons[$polygon_i] }; # parallel arrays; this is the point data parsed out of the d attribute of the XML/SVG <path...> tag
 
-        # translate the polygon into the screen area (or, in general, translate to appear in the specified area)
+        # find the local min and max and use that as the objects initial position
 
-        if( $world_min_x < 0 ) {
-            $_->[0] += abs($world_min_x) for @polygon;
-        } else {
-            $_->[0] -= abs($world_min_x) for @polygon;
-        }
-
-        if( $world_min_y < 0 ) {
-            $_->[1] += abs($world_min_y) for @polygon;
-        } else {
-            $_->[1] -= abs($world_min_y) for @polygon;
-        }
-
-        # scale the polygon to the screen size (or the specified size)
-
-        $_->[0] *= $world_scale_x for @polygon;
-        $_->[1] *= $world_scale_y for @polygon;
-
-        # then find the local min and max and use that as the objects initial position
-
+warn "before removing local mininums: " . Data::Dumper::Dumper \@polygon;
         my ( $local_min_x, $local_min_y, $local_max_x, $local_max_y ) = $self->get_min_max_x_y( \@polygon );
+warn "local mininums: $local_min_x, $local_min_y";
 
         # translate the polygon into its own coordinate system that starts at 0,0 for that shape
         # this space that we substract out from the top left of the screen and the start of this polygon
         # gets used in a moment as the x, y position of this polygon on the screen.
         # this way, the shape is actually near its x, y position.
 
-        $_->[0] -= $local_min_x for @polygon;
-        $_->[1] -= $local_min_y for @polygon;
+        for (@polygon) {
+            $_->[0] -= $local_min_x; # XXXXXXXXXXX
+            $_->[1] -= $local_min_y;
+       }
+warn "after removing local mininums: " . Data::Dumper::Dumper \@polygon;
+        for (@polygon) { die if $_->[0] < 0;  die if $_->[1] < 0 }; 
         
-        # splice @polygon, @polygon/2, 1, () while @polygon > 8; # XXXXXXXXX how to get more vertices?  is 8 a limitation?
-        # @polygon = reverse @polygon; # XXXXXXXXXXXX okay, how do we figure out if we need to reverse this to reverse the winding?  XXXXX makes it coredump with " Assertion `edge.LengthSquared()" if the points go the wrong way with respect to clockwise/counter clockwise
+        if( ! $self->convex_check( \@polygon ) ) {
+            warn "well, our bloody polygon isn't convex; hell; trying to reverse the order of the points";
+            @polygon = reverse @polygon;
+            if( ! $self->convex_check( \@polygon ) ) {
+                # XXXXXXX I don't think this will ever actually fix this; winding is a different test
+                warn "well, hell; our bloody polygon *still* isn't convex; giving up on this one";
+                next;
+            } 
+        }
 
-warn Data::Dumper::Dumper \@polygon;
-        warn Data::Dumper::Dumper \@polygon if $debug;
+        # splice @polygon, @polygon/2, 1, () while @polygon > 8; # XXXXXXXXX how to get more vertices?  is 8 a limitation?
+        # @polygon = reverse @polygon; # XXXXXXXXXXXX okay, how do we figure out if we need to reverse this to reverse the winding?
 
         # Box2D::b2PolygonShape
      
@@ -189,14 +251,15 @@ warn Data::Dumper::Dumper \@polygon;
 
         my $bodyDef = Box2D::b2BodyDef->new();
         $bodyDef->type(Box2D::b2_staticBody);
-        $bodyDef->position->Set( 0, 0  ); # XXXXXXXXXXX  need a local coordinate system for each shape
-        $bodyDef->position->Set( $local_min_x, $local_min_y  );
+        # $bodyDef->position->Set( $local_min_x, $app_h * $scale - $local_max_y  ); # XXXXX is Y stored inverse of screen?  if so, I need to reverse the Y coords before scaling etc; # XXXXX is Y stored inverse of screen?  if so, I need to reverse the Y coords before scaling et
+        $bodyDef->position->Set( $local_min_x, $local_max_y  );
         my $body = $world->CreateBody($bodyDef);
+# $body->GetTransform->SetIdentity;  # clobbers the polsition->Set stuff, so the position is apparently the vector in there
+# die Data::Dumper::Dumper $body->GetTransform;
 
         # color
 
         my $color = $self->color_data( $path->{style} );
-warn "XXXXXXXXXXXXXXXXXXXXXXXXXXX parsed out color data $color from style $path->{stype}";
 
         # Zemmings::SVD::Object
 
@@ -253,37 +316,57 @@ That appears inside of an SVG C<< <path> >> tag's C<d> element.
 
 This is used internally as a helper method.
 
+Specification for this obnoxious little compression format is at L<< http://www.w3.org/TR/SVG/paths.html#PathData >>.
+
 =cut
 
 sub svg_path_data {
+
     my $self = shift;
     my $d = shift;  # this is what SVG calls this attribute; it's unstructured data, and they can't even be bothered to call it "data".  it's just "d".  fuckers.
+    # my $last_point = shift() || [ 0, 0 ];
+
+
+warn "d: $d";
+
     my @polygon;
     my @draw = split m/ /, $d; 
-    my $last_point;
+
+    my $last_point = [ 0, 0 ];
     my $cmd;
+
     # d="M -58,1014.3622 C 240,842.36218 240,842.36218 240,842.36218 l 46,64 148,-86 178,98 164,-124 4,278.00002 -846,0 z"
     # style="fill:#000080;stroke:#000000;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+
+warn $d;
+    my $debug = $self->{debug};
 
     while( my $token = shift @draw ) {
         if( $token =~ m/\d,-?\d/ ) {
             my $point = [ map 0+$_, split m/,/, $token ];
-            if( $cmd eq 'M' or $cmd eq 'L' ) {
+            # if( $cmd eq 'M' or $cmd eq 'L' or $cmd eq 'C' or ( $cmd eq 'm' and ! $last_point ) or ( $cmd eq 'l' and ! $last_point ) ) {
+            if( $cmd eq 'M' or $cmd eq 'L' or $cmd eq 'C' ) {
                 # move to absolute
                 # we don't distinguish move-to and line-to because we're drawing a closed polygon; gaps aren't allowed
-                $last_point = $point;
-                # warn "$cmd: move-to/line-to " . Data::Dumper::Dumper $point;
-                push @polygon, $point;
-            } elsif( $cmd eq 'm' or $cmd eq 'l' ) {
+                warn "$cmd: move-to/line-to " . Data::Dumper::Dumper $point if $debug;
+                unless( @polygon and $polygon[-1][0] == $point->[0] and $polygon[-1][1] == $point->[1] ) {
+                    $last_point = $point;
+                    push @polygon, $point;
+                }
+            } elsif( $cmd eq 'm' or $cmd eq 'l' or $cmd eq 'c' or $cmd eq 's' or $cmd eq 'q' or $cmd eq 't' or $cmd eq 'a') {
                 # move to relative 
                 die unless $last_point;
                 $point->[0] += $last_point->[0];
                 $point->[1] += $last_point->[1];
-                # warn "$cmd: move-to rel/line-to rel " . Data::Dumper::Dumper $point;
-                $last_point = $point;
-                push @polygon, $point;
+                warn "$cmd: move-to rel/line-to rel " . Data::Dumper::Dumper $point if $debug;
+                unless( @polygon and $polygon[-1][0] == $point->[0] and $polygon[-1][1] == $point->[1] ) {
+                    $last_point = $point;
+                    push @polygon, $point;
+                }
+            } elsif( $cmd eq 'C' or $cmd eq 'c' ) {
+                # curve to; ignore; the ones I see just contain the same point repeated several times
             } else {
-                warn "unknown SVG path command ``$cmd''; ignoring point data";
+                die "unknown SVG path command ``$cmd''; ignoring point data";
                 # ignore
             }
         } else {
@@ -291,19 +374,21 @@ sub svg_path_data {
             if( uc($cmd) eq 'Z' ) {
                 # make the last point in the polygon the same as the first point to close it
                 # this one doesn't wait for coordinate data to come in
-                # warn "$cmd: close polygon " . Data::Dumper::Dumper $polygon[0];
-                push @polygon, $polygon[0] unless $polygon[0]->[0] == $polygon[-1]->[0] and $polygon[0]->[1] == $polygon[-1]->[1]; 
+                # take care to copy the point so that references aren't shared; otherwise, if our user loops over each point modifying it, the first (and last) point will be modified twice!
+                warn "$cmd: close polygon " . Data::Dumper::Dumper $polygon[0] if $debug;
+                my $point_copy = [ @{ $polygon[0] } ];
+                $last_point = $point_copy; # next <path> tag may continue relative to this one!
+                push @polygon, $point_copy;
             }
         }
     }
 
-    return wantarray ? @polygon : \@polygon; # XXXXXXXX also pick out color data...?
+    return wantarray ? @polygon : \@polygon;
 }
 
 =head2 color_data( $style_attribute_text )
 
 Helper function.  Pulls color data out of the C<style> attribute of the C<path> tag.
-Defaults to C<0x000000ff>, black.
 XXX should maybe return C<undef> when no color data is extractable and let people set
 their own defaults?  Or let people pass a default including C<undef>?
 Problem with defaults is that you need a way to tell when they've been used.
@@ -313,9 +398,18 @@ Problem with defaults is that you need a way to tell when they've been used.
 sub color_data {
     my $self = shift;
     my $style = shift;
+    my $default = shift;
+    my $color;
     #    style="fill:#000080;stroke:#000000;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-    $style =~ m/fill:#([0-9a-zA-Z]{6})/ or return 0x000000ff;
-    my $color = ( $1 << 8 ) | 0xff;  # no transparency
+    if( $style =~ m/fill:#([0-9a-zA-Z]{6})/ ) {
+        $color = ( hex($1) << 8 ) | 0xff;  # no transparency
+    } else {
+        if( $default ) {
+            $color = $default;
+        } else {
+            die "can't parse fill color data out of style ``$style'' and no default color was passed";
+        }
+    }
     return $color;
 }
 
@@ -336,15 +430,60 @@ Internal helper method.
 =cut
 
 sub get_min_max_x_y {
-        my $self = shift;
-        my @polygon = @{ shift() };
-        my @xs = map { $_->[0] } sort { $a->[0] <=> $b->[0] } @polygon;
-        my @ys = map { $_->[1] } sort { $a->[1] <=> $b->[1] } @polygon;
-        my $min_x = $xs[0];
-        my $max_x = $xs[-1];
-        my $min_y = $ys[0];
-        my $max_y = $ys[-1];
-        return ($min_x, $min_y, $max_x, $max_y);
+    my $self = shift;
+    my @polygon = @{ shift() };
+    my @xs = map { $_->[0] } sort { $a->[0] <=> $b->[0] } @polygon;
+    my @ys = map { $_->[1] } sort { $a->[1] <=> $b->[1] } @polygon;
+    my $min_x = $xs[0];
+    my $max_x = $xs[-1];
+    my $min_y = $ys[0];
+    my $max_y = $ys[-1];
+    return ($min_x, $min_y, $max_x, $max_y);
+}
+
+=head2 convex_check( \@polygon_data )
+
+Replicates the check inside of L<b2PolygonShape::Set> (C++ Box2D library) but without the fatal assert
+attached to it.
+Tells us if we should attempt to reverse the order of points.
+Returns C<undef> on failure or C<1> to indicate the polygon looks okay.
+
+=cut
+
+sub convex_check {
+    my $self = shift;
+    my @polygon = @{ shift() } or die;
+
+    # Ensure the polygon is convex and the interior
+    # is to the left of each edge.
+
+    for (my $i = 0; $i < @polygon; ++$i)
+    {
+        my $i1 = $i;
+        my $i2 = $i + 1 < @polygon ? $i + 1 : 0;
+        my $edge = [ $polygon[$i2]->[0] - $polygon[$i1]->[0], $polygon[$i2]->[1] - $polygon[$i1]->[1] ]; # b2Vec2 edge = m_vertices[i2] - m_vertices[i1];
+
+        for (my $j = 0; $j < @polygon; ++$j)
+        {
+            # Don't check vertices on the current edge.
+            if ($j == $i1 || $j == $i2)
+            {
+                next;
+            }
+            
+            my $r = [ $polygon[$j]->[0] - $polygon[$i1]->[0], $polygon[$j]->[1] - $polygon[$i1]->[1] ]; # b2Vec2 r = m_vertices[j] - m_vertices[i1];
+
+            # Your polygon is non-convex (it has an indentation) or
+            # has colinear edges.
+            # my $s = b2Cross($edge, $r);
+            # Perform the cross product on two vectors. In 2D this produces a scalar.
+            my $s = $edge->[0] * $r->[1] - $edge->[1] * $r->[0];
+
+            warn "non-convexness detected looking at edges $j and $i1" if ! ( $s > 0.0 );
+            return undef if ! ($s > 0.0);
+        }
+    }
+    return 1;
 }
 
 #
